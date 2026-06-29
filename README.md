@@ -344,14 +344,14 @@ Kozmetik fark = prop sırası, değişken ismi gibi render'ı etkilemeyen farkla
 
 **Nasıl çalışır:**
 
-1. Her golden set örneği 10 kez çalıştırılır
-2. Her çalıştırmada: istek gönderilme anı → TSX yanıtı gelme anı arası ölçülür (ms)
-3. Sonuçlar frame zorluk seviyesine göre segmente edilir
+Ayrı bir çalıştırma yapılmaz. Diğer metrikler için MCP zaten çalıştırılıyor (M1, M2, M5, M7 vb.) — her çalıştırmada istek gönderilme anı ile TSX yanıtının gelme anı arasındaki süre milisaniye olarak kaydedilir.
+
+Tüm testler tamamlandığında toplanan süreler üzerinden hesaplanır:
 
 ```
 P50  = Medyan (çalıştırmaların yarısı bunun altında)
+P90  = Çalıştırmaların %90'ı bunun altında
 P95  = Çalıştırmaların %95'i bunun altında
-P99  = Çalıştırmaların %99'u bunun altında
 ```
 
 **Hedef:** Baseline ölçümünden sonra belirlenecek
@@ -370,7 +370,7 @@ P99  = Çalıştırmaların %99'u bunun altında
 | M5 | Compilability | İlk seferde derleniyor mu | Ark projesi | Otomatik (npm start) | Baseline sonrası | %10 |
 | M6 | Code Quality | Kod prensiplerine uyuyor mu | Şirket kod prensipleri | LLM-as-Judge / human review | Baseline sonrası | %10 |
 | M7 | Consistency | Her seferinde aynı kodu mu üretiyor | Kendi çıktıları arası | Otomatik (kod diff) | Baseline sonrası | %5 |
-| M8 | Latency | Ne kadar sürüyor | — | Otomatik (süre ölçümü) | Baseline sonrası | %5 |
+| M8 | Latency | Ne kadar sürüyor | — | Otomatik (süre kaydı) | Baseline sonrası | %5 |
 
 **Genel Performans Skoru (M0):**
 
@@ -411,7 +411,7 @@ Hedef: Baseline ölçümünden sonra belirlenecek
 | `tsc --noEmit` | Üretilen TSX + Ark type definitions | Type hata listesi | M2 (type check) |
 | `npm start` (düzeltme yapmadan) | Üretilen TSX + Ark projesi | Derlendi / derlenmedi + hata tipi | M5 |
 | Diff: 3 TSX birbirleriyle | 3 üretilen TSX (aynı girdi) | Tutarlı / tutarsız | M7 |
-| Süre istatistikleri | Çalıştırma süreleri | P50, P95, P99 | M8 |
+| Süre kaydı (tüm çalıştırmalarda otomatik) | Her MCP çağrısı | P50, P90, P95 | M8 |
 
 **M3 (Hallucination Rate)** bu adımda ayrıca hesaplanmaz. M1 ve M2'nin precision değerleri hesaplandıktan sonra `M3 = 1 - (M1 Precision + M2 Precision) / 2` formülüyle türetilir.
 
