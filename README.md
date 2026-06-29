@@ -266,21 +266,19 @@ Bu fark analizi, hem LLM prompt'unu geliştirmek hem de MCP pipeline'ındaki gö
 
 ### M5 — Compilability (Derlenebilirlik)
 
-**Soru:** Üretilen TSX dosyası hatasız derlenebiliyor mu?
+**Soru:** MCP'nin tek seferde ürettiği TSX dosyası hiçbir düzeltme yapılmadan derlenebiliyor mu?
 
 **Yöntem:** Otomatik
 
+**Önemli:** Bu metrik MCP'nin **ilk çıktısını** ölçer. Hata alınıp 1-2 düzeltme yapılırsa muhtemelen her kod derlenecektir — ama asıl soru MCP'nin ilk seferde çalışır kod üretip üretemediğidir.
+
 **Nasıl çalışır:**
 
-1. Üretilen TSX dosyası, Ark library'nin kurulu olduğu bir proje ortamına kopyalanır
-2. `tsc --noEmit` komutu çalıştırılır
-3. Sonuç: derlendi (1) veya derlenmedi (0)
+1. MCP'nin ürettiği TSX dosyası, Ark library'nin kurulu olduğu projeye olduğu gibi kopyalanır (hiçbir düzeltme yapılmaz)
+2. `npm start` çalıştırılır
+3. Sonuç: **derlendi** veya **derlenmedi**
 
-```
-Compilability Rate = Derlenen dosya sayısı / Toplam dosya sayısı × 100
-```
-
-**Derlenmeyenlerde hata tipi de kaydedilir:**
+**Hata alanlarda hata tipi de kaydedilir:**
 
 | Hata Tipi | Örnek |
 |---|---|
@@ -371,7 +369,7 @@ P99  = Çalıştırmaların %99'u bunun altında
 | M3 | Hallucination Rate | Uydurma component/prop oranı | M1 ve M2 precision değerleri | Türetilmiş (ayrı test yok) | Baseline sonrası | %15 |
 | M4-Human | Visual Fidelity (İnsan) | Render Figma'ya benziyor mu | Figma screenshot | Human review | Baseline sonrası | %15 |
 | M4-LLM | Visual Fidelity (LLM) | Render Figma'ya benziyor mu | Figma screenshot | LLM-as-Judge | Baseline sonrası | %10 |
-| M5 | Compilability | Kod derleniyor mu | Ark type definitions | Otomatik (tsc --noEmit) | Baseline sonrası | %10 |
+| M5 | Compilability | İlk seferde derleniyor mu | Ark projesi | Otomatik (npm start) | Baseline sonrası | %10 |
 | M6 | Code Quality | Kod prensiplerine uyuyor mu | Şirket kod prensipleri | LLM-as-Judge / human review | Baseline sonrası | %10 |
 | M7 | Consistency | Her seferinde benzer sonuç mu | Kendi çıktıları arası | Otomatik (diff + SSIM) | Baseline sonrası | %5 |
 | M8 | Latency | Ne kadar sürüyor | — | Otomatik (süre ölçümü) | Baseline sonrası | %5 |
@@ -412,7 +410,8 @@ Hedef: Baseline ölçümünden sonra belirlenecek
 |---|---|---|---|
 | AST parse → üretilen component listesi ↔ Figma component listesi | Figma verisi + üretilen TSX | F1 skoru + eşleşme raporu | M1 |
 | AST parse → üretilen prop listesi ↔ Figma prop listesi | Figma verisi + üretilen TSX | Prop F1 skoru | M2 |
-| `tsc --noEmit` | Üretilen TSX + Ark type definitions | Derleme sonucu + hata listesi | M2 (type check), M5 |
+| `tsc --noEmit` | Üretilen TSX + Ark type definitions | Type hata listesi | M2 (type check) |
+| `npm start` (düzeltme yapmadan) | Üretilen TSX + Ark projesi | Derlendi / derlenmedi + hata tipi | M5 |
 | Diff: 5 TSX birbirleriyle | 5 üretilen TSX | Değişen satır oranı | M7 (kod) |
 | SSIM: 5 render screenshot birbirleriyle | 5 screenshot | Tutarlılık skoru | M7 (görsel) |
 | Süre istatistikleri | Çalıştırma süreleri | P50, P95, P99 | M8 |
