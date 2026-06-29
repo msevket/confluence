@@ -212,31 +212,17 @@ M3 = 1 - (0.90 + 0.85) / 2 = 1 - 0.875 = 0.125 → %12.5 halüsinasyon
 
 **Soru:** Üretilen TSX tarayıcıda render edildiğinde Figma tasarımına ne kadar benziyor?
 
-**Yöntem:** Hibrit (otomatik pixel karşılaştırma + LLM-as-Judge)
+**Yöntem:** Human review + LLM-as-Judge
 
 **Bu, pipeline'ın en kritik metriğidir.** Diğer metrikler component ve prop seviyesinde doğruluğu ölçerken, bu metrik "bütün olarak sonuç doğru görünüyor mu" sorusunu cevaplar.
 
-**İki ölçüm paralel çalışır:**
+**Neden pixel karşılaştırma (SSIM) kullanmıyoruz:** Figma screenshot ile tarayıcı render'ı arasında font rendering, anti-aliasing, sub-pixel farklar gibi doğal farklılıklar var. Bu farklar görsel olarak anlamsız olmasına rağmen SSIM skorunu düşürür ve gürültülü sonuçlar üretir. "Benziyor mu" sorusunu insan gözü ve LLM-as-Judge çok daha anlamlı cevaplar.
 
-#### A) Pixel-Level Karşılaştırma (Otomatik)
+**İki değerlendirme paralel çalışır:**
 
-1. Üretilen TSX, Playwright ile headless browser'da render edilir
-2. Sabit viewport boyutunda screenshot alınır
-3. Figma screenshot ile karşılaştırılır
+#### A) LLM-as-Judge
 
-```
-SSIM (Structural Similarity Index): 0 ile 1 arası
-  0 = tamamen farklı
-  1 = piksel piksel aynı
-```
-
-SSIM, basit pixel diff'ten daha anlamlıdır çünkü 1px kayma bile pixel diff'i şişirirken SSIM yapısal benzerliğe odaklanır.
-
-Araçlar: Pixelmatch, Resemble.js veya Playwright built-in visual comparison.
-
-**Not:** Figma screenshot ile tarayıcı render'ı arasında font rendering, anti-aliasing gibi doğal farklar olacaktır. SSIM = 1.0 beklemek gerçekçi değildir. Baseline olarak ilk golden set çalıştırmasında ortalamayı ölçüp hedefi buna göre kalibre edin.
-
-#### B) Semantik Değerlendirme (LLM-as-Judge)
+Üretilen TSX'in render screenshot'ı ile Figma screenshot'ı vision destekli bir LLM'e verilir:
 
 ```
 İki görsel veriyorum. Sol: orijinal Figma tasarımı. Sağ: üretilen kodun render'ı.
@@ -252,11 +238,22 @@ Her boyut için kısa açıklama yaz. Sonunda genel skor ver (1-10).
 Yalnızca JSON formatında cevap ver.
 ```
 
-**Bileşik skor:**
+LLM-as-Judge golden set'in **tamamına** uygulanır.
+
+#### B) Human Review
+
+Golden set'in **%20-30'u** insan tarafından da aynı 5 boyutta (layout, spacing, tipografi, renk, içerik) 1-10 arası puanlanır. Bu değerlendirmenin iki amacı var:
+
+1. LLM-as-Judge'ın kalibrasyonu — LLM skorları ile insan skorları karşılaştırılır
+2. LLM'in kaçırdığı ince farkların tespiti
+
+**Skor:**
 
 ```
-Visual Fidelity = (SSIM × 0.4) + (LLM-Judge Skoru / 10 × 0.6)
+Visual Fidelity = LLM-Judge Genel Skoru / 10
 ```
+
+Eğer human review ile LLM-Judge arasında korelasyon < 0.7 çıkarsa, LLM prompt'u iyileştirilerek kalibrasyon tekrarlanır.
 
 **Hedef:** Baseline ölçümünden sonra belirlenecek
 
@@ -367,7 +364,7 @@ P99  = Çalıştırmaların %99'u bunun altında
 | M1 | Component Detection F1 | Doğru component seçilmiş mi | Figma'daki component listesi | Otomatik (AST parse) | Baseline sonrası | %15 |
 | M2 | Prop Accuracy F1 | Prop ve variant'lar doğru aktarılmış mı | Figma'daki prop/variant bilgileri | Otomatik (AST + tsc) | Baseline sonrası | %15 |
 | M3 | Hallucination Rate | Uydurma component/prop oranı | M1 ve M2 precision değerleri | Türetilmiş (ayrı test yok) | Baseline sonrası | %15 |
-| M4 | Visual Fidelity | Render Figma'ya benziyor mu | Figma screenshot | Hibrit (SSIM + LLM-as-Judge) | Baseline sonrası | %25 |
+| M4 | Visual Fidelity | Render Figma'ya benziyor mu | Figma screenshot | Human review + LLM-as-Judge | Baseline sonrası | %25 |
 | M5 | Compilability | Kod derleniyor mu | Ark type definitions | Otomatik (tsc --noEmit) | Baseline sonrası | %10 |
 | M6 | Code Quality | Kod prensiplerine uyuyor mu | Şirket kod prensipleri | LLM-as-Judge / human review | Baseline sonrası | %10 |
 | M7 | Consistency | Her seferinde benzer sonuç mu | Kendi çıktıları arası | Otomatik (diff + SSIM) | Baseline sonrası | %5 |
@@ -410,29 +407,28 @@ Hedef: Baseline ölçümünden sonra belirlenecek
 | AST parse → üretilen component listesi ↔ Figma component listesi | Figma verisi + üretilen TSX | F1 skoru + eşleşme raporu | M1 |
 | AST parse → üretilen prop listesi ↔ Figma prop listesi | Figma verisi + üretilen TSX | Prop F1 skoru | M2 |
 | `tsc --noEmit` | Üretilen TSX + Ark type definitions | Derleme sonucu + hata listesi | M2 (type check), M5 |
-| SSIM: Figma screenshot ↔ render screenshot | İki screenshot | Benzerlik skoru | M4 (pixel) |
 | Diff: 5 TSX birbirleriyle | 5 üretilen TSX | Değişen satır oranı | M7 (kod) |
 | SSIM: 5 render screenshot birbirleriyle | 5 screenshot | Tutarlılık skoru | M7 (görsel) |
 | Süre istatistikleri | Çalıştırma süreleri | P50, P95, P99 | M8 |
 
 **M3 (Hallucination Rate)** bu adımda ayrıca hesaplanmaz. M1 ve M2'nin precision değerleri hesaplandıktan sonra `M3 = 1 - (M1 Precision + M2 Precision) / 2` formülüyle türetilir.
 
-### Adım 5 — LLM-as-Judge
+### Adım 5 — LLM-as-Judge + Human Review
 
-| Değerlendirme | Girdi | Metrik |
-|---|---|---|
-| Görsel sadakat puanlama | Figma screenshot + render screenshot | M4 (semantik) |
-| Kod prensipleri kontrolü | Üretilen TSX + şirket kod prensipleri | M6 |
+| Değerlendirme | Girdi | Kapsam | Metrik |
+|---|---|---|---|
+| Görsel sadakat puanlama (LLM) | Figma screenshot + render screenshot | Golden set'in tamamı | M4 |
+| Görsel sadakat puanlama (Human) | Figma screenshot + render screenshot | Golden set'in %20-30'u | M4 (kalibrasyon) |
+| Kod prensipleri kontrolü (LLM) | Üretilen TSX + şirket kod prensipleri | Golden set'in tamamı | M6 |
 
-### Adım 6 — Human Review (örneklemin %20-30'u)
+Human review, LLM-as-Judge'ın güvenilirliğini kalibre etmek için yapılır:
 
-LLM-as-Judge'ın güvenilirliğini kalibre etmek için golden set'in %20-30'u insan tarafından da değerlendirilir:
-
-- LLM-Judge skorlarıyla insan skorları karşılaştırılır
+- Aynı örnekler hem LLM hem insan tarafından puanlanır
+- LLM skorları ile insan skorları karşılaştırılır
 - Korelasyon < 0.7 ise LLM prompt'ları iyileştirilir
-- Edge case'ler ve LLM'in kaçırdığı hatalar belirlenir
+- Edge case'ler ve LLM'in kaçırdığı ince farklar belirlenir
 
-### Adım 7 — Raporlama
+### Adım 6 — Raporlama
 
 - Metrik bazında skorlar
 - Zorluk seviyesine göre kırılım (basit/orta/karmaşık)
