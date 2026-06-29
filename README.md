@@ -212,48 +212,53 @@ M3 = 1 - (0.90 + 0.85) / 2 = 1 - 0.875 = 0.125 → %12.5 halüsinasyon
 
 **Soru:** Üretilen TSX tarayıcıda render edildiğinde Figma tasarımına ne kadar benziyor?
 
-**Yöntem:** Human review + LLM-as-Judge
+**Yöntem:** İki bağımsız değerlendirme, iki ayrı skor
 
 **Bu, pipeline'ın en kritik metriğidir.** Diğer metrikler component ve prop seviyesinde doğruluğu ölçerken, bu metrik "bütün olarak sonuç doğru görünüyor mu" sorusunu cevaplar.
 
 **Neden pixel karşılaştırma (SSIM) kullanmıyoruz:** Figma screenshot ile tarayıcı render'ı arasında font rendering, anti-aliasing, sub-pixel farklar gibi doğal farklılıklar var. Bu farklar görsel olarak anlamsız olmasına rağmen SSIM skorunu düşürür ve gürültülü sonuçlar üretir. "Benziyor mu" sorusunu insan gözü ve LLM-as-Judge çok daha anlamlı cevaplar.
 
-**İki değerlendirme paralel çalışır:**
+**Değerlendirme sorusu (hem insan hem LLM için aynı):**
 
-#### A) LLM-as-Judge
+> "Bu render Figma tasarımına ne kadar benziyor? 1-10 arası puanla."
 
-Üretilen TSX'in render screenshot'ı ile Figma screenshot'ı vision destekli bir LLM'e verilir:
+Alt boyut veya kriter listesi yok. Tek bir genel skor. Detaylı kırılımı (hangi component yanlış, hangi prop eksik) zaten M1 ve M2 yapıyor. M4'ün işi sadece görsel bütünlüğü ölçmek.
 
-```
-İki görsel veriyorum. Sol: orijinal Figma tasarımı. Sağ: üretilen kodun render'ı.
+#### M4-Human (İnsan Değerlendirmesi)
 
-Aşağıdaki her boyutu 1-10 arası puanla:
-1. Layout sadakati — Elemanların konumları, hiyerarşisi, akış yönü doğru mu?
-2. Spacing/sizing — Padding, margin, gap, element boyutları uyumlu mu?
-3. Tipografi — Font boyutu, ağırlığı, hizalama doğru mu?
-4. Renk ve stil — Renkler, border, shadow, radius uyumlu mu?
-5. İçerik bütünlüğü — Tüm metin, ikon ve görseller mevcut mu?
-
-Her boyut için kısa açıklama yaz. Sonunda genel skor ver (1-10).
-Yalnızca JSON formatında cevap ver.
-```
-
-LLM-as-Judge golden set'in **tamamına** uygulanır.
-
-#### B) Human Review
-
-Golden set'in **%20-30'u** insan tarafından da aynı 5 boyutta (layout, spacing, tipografi, renk, içerik) 1-10 arası puanlanır. Bu değerlendirmenin iki amacı var:
-
-1. LLM-as-Judge'ın kalibrasyonu — LLM skorları ile insan skorları karşılaştırılır
-2. LLM'in kaçırdığı ince farkların tespiti
-
-**Skor:**
+Değerlendirici Figma screenshot ile render screenshot'ını yan yana görür ve 1-10 arası tek bir puan verir.
 
 ```
-Visual Fidelity = LLM-Judge Genel Skoru / 10
+M4-Human = İnsan skoru / 10
 ```
 
-Eğer human review ile LLM-Judge arasında korelasyon < 0.7 çıkarsa, LLM prompt'u iyileştirilerek kalibrasyon tekrarlanır.
+#### M4-LLM (LLM-as-Judge Değerlendirmesi)
+
+Aynı iki görsel vision destekli bir LLM'e verilir:
+
+```
+İki görsel veriyorum.
+Birincisi orijinal Figma tasarımı, ikincisi üretilen kodun tarayıcı render'ı.
+Bu render Figma tasarımına ne kadar benziyor? 1-10 arası puanla.
+Kısa bir gerekçe yaz.
+Yalnızca JSON formatında cevap ver: {"score": X, "reason": "..."}
+```
+
+```
+M4-LLM = LLM skoru / 10
+```
+
+#### İki Skor Arasındaki Fark
+
+İki skor ayrı ayrı raporlanır, birleştirilmez. Aradaki fark kendi başına anlamlı bir sinyaldir:
+
+| Durum | Ne anlama gelir |
+|---|---|
+| İki skor yakın (fark ≤ 1 puan) | LLM ve insan aynı şeyi görüyor, değerlendirme güvenilir |
+| İnsan düşük, LLM yüksek | LLM'in kaçırdığı görsel sorunlar var — LLM prompt'u iyileştirilmeli |
+| İnsan yüksek, LLM düşük | LLM gereksiz yere cezalandırıyor — LLM prompt'u iyileştirilmeli |
+
+Bu fark analizi, hem LLM prompt'unu geliştirmek hem de MCP pipeline'ındaki görsel sorunları anlamak için doğrudan feedback sağlar.
 
 **Hedef:** Baseline ölçümünden sonra belirlenecek
 
@@ -364,7 +369,8 @@ P99  = Çalıştırmaların %99'u bunun altında
 | M1 | Component Detection F1 | Doğru component seçilmiş mi | Figma'daki component listesi | Otomatik (AST parse) | Baseline sonrası | %15 |
 | M2 | Prop Accuracy F1 | Prop ve variant'lar doğru aktarılmış mı | Figma'daki prop/variant bilgileri | Otomatik (AST + tsc) | Baseline sonrası | %15 |
 | M3 | Hallucination Rate | Uydurma component/prop oranı | M1 ve M2 precision değerleri | Türetilmiş (ayrı test yok) | Baseline sonrası | %15 |
-| M4 | Visual Fidelity | Render Figma'ya benziyor mu | Figma screenshot | Human review + LLM-as-Judge | Baseline sonrası | %25 |
+| M4-Human | Visual Fidelity (İnsan) | Render Figma'ya benziyor mu | Figma screenshot | Human review | Baseline sonrası | %15 |
+| M4-LLM | Visual Fidelity (LLM) | Render Figma'ya benziyor mu | Figma screenshot | LLM-as-Judge | Baseline sonrası | %10 |
 | M5 | Compilability | Kod derleniyor mu | Ark type definitions | Otomatik (tsc --noEmit) | Baseline sonrası | %10 |
 | M6 | Code Quality | Kod prensiplerine uyuyor mu | Şirket kod prensipleri | LLM-as-Judge / human review | Baseline sonrası | %10 |
 | M7 | Consistency | Her seferinde benzer sonuç mu | Kendi çıktıları arası | Otomatik (diff + SSIM) | Baseline sonrası | %5 |
@@ -415,22 +421,18 @@ Hedef: Baseline ölçümünden sonra belirlenecek
 
 ### Adım 5 — LLM-as-Judge + Human Review
 
-| Değerlendirme | Girdi | Kapsam | Metrik |
-|---|---|---|---|
-| Görsel sadakat puanlama (LLM) | Figma screenshot + render screenshot | Golden set'in tamamı | M4 |
-| Görsel sadakat puanlama (Human) | Figma screenshot + render screenshot | Golden set'in %20-30'u | M4 (kalibrasyon) |
-| Kod prensipleri kontrolü (LLM) | Üretilen TSX + şirket kod prensipleri | Golden set'in tamamı | M6 |
+| Değerlendirme | Girdi | Metrik |
+|---|---|---|
+| Görsel sadakat puanlama (İnsan) | Figma screenshot + render screenshot | M4-Human |
+| Görsel sadakat puanlama (LLM) | Figma screenshot + render screenshot | M4-LLM |
+| Kod prensipleri kontrolü (LLM) | Üretilen TSX + şirket kod prensipleri | M6 |
 
-Human review, LLM-as-Judge'ın güvenilirliğini kalibre etmek için yapılır:
-
-- Aynı örnekler hem LLM hem insan tarafından puanlanır
-- LLM skorları ile insan skorları karşılaştırılır
-- Korelasyon < 0.7 ise LLM prompt'ları iyileştirilir
-- Edge case'ler ve LLM'in kaçırdığı ince farklar belirlenir
+İnsan ve LLM aynı görselleri aynı kriterlerle bağımsız olarak puanlar. İki skor ayrı ayrı raporlanır. Aradaki fark varsa neden farklı değerlendirdikleri incelenir — bu hem LLM prompt'unu hem MCP pipeline'ını geliştirmek için feedback sağlar.
 
 ### Adım 6 — Raporlama
 
 - Metrik bazında skorlar
+- M4-Human ve M4-LLM fark analizi
 - Zorluk seviyesine göre kırılım (basit/orta/karmaşık)
 - Catalog bazında kırılım (efa/cfa/wsp)
 - Hata kategorileri dağılımı
@@ -441,13 +443,14 @@ Human review, LLM-as-Judge'ın güvenilirliğini kalibre etmek için yapılır:
 
 ## LLM-as-Judge Güvenilirlik Kontrolleri
 
-LLM-as-Judge kullanılan metriklerde (M4, M6) sonuçların güvenilir olması için:
+LLM-as-Judge kullanılan metriklerde (M4-LLM, M6) tutarlılık için:
 
 | Kontrol | Nasıl yapılır | Kabul kriteri |
 |---|---|---|
 | Tekrar edilebilirlik | Aynı örneği 3 kez ayrı LLM çağrılarıyla değerlendir | Skorlar arası std sapma < 1.5 |
-| İnsan kalibrasyonu | İlk 10 örneği hem LLM hem insan değerlendirsin | Pearson korelasyonu ≥ 0.7 |
 | Anchoring | Prompt'a "bu 3 puan, bu 8 puan" referans örnekleri ekle | Judge'ın tutarlılığı artar |
+
+M4-Human ile M4-LLM arasındaki fark analizi ayrıca LLM prompt'unun kalitesine dair doğal bir feedback mekanizması sağlar (detaylar M4 bölümünde).
 
 ---
 
