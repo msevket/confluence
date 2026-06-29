@@ -318,21 +318,19 @@ Code Quality = Toplam puan / 10 × 100
 
 ### M7 — Consistency (Tutarlılık)
 
-**Soru:** Aynı Figma frame'i her dönüştürüldüğünde benzer sonuç veriyor mu?
+**Soru:** Aynı Figma frame'i her dönüştürüldüğünde aynı kodu üretiyor mu?
 
-**Yöntem:** Otomatik (diff + SSIM)
+**Yöntem:** Otomatik (kod diff)
 
 **Nasıl çalışır:**
 
-1. Aynı golden set örneği **5 kez** MCP'den geçirilir
-2. Kod tutarlılığı: 5 TSX dosyası birbirleriyle diff edilir, değişen satır oranı hesaplanır
-3. Görsel tutarlılık: 5 render screenshot'ı birbirleriyle SSIM karşılaştırılır
+1. Aynı golden set örneği **3 kez** MCP'den geçirilir
+2. 3 TSX dosyası birbirleriyle diff edilir
+3. Sonuç: **tutarlı** (fark yok veya kozmetik) veya **tutarsız** (yapısal fark var)
 
-```
-Kod Tutarlılığı    = 1 - (Ortalama değişen satır oranı)
-Görsel Tutarlılık  = 5 render arasındaki ortalama SSIM
-Consistency Score  = (Kod Tutarlılığı × 0.5) + (Görsel Tutarlılık × 0.5)
-```
+Kozmetik fark = prop sırası, değişken ismi gibi render'ı etkilemeyen farklar. Yapısal fark = farklı component seçimi, farklı layout, farklı prop değerleri.
+
+**Neden görsel karşılaştırma yapmıyoruz:** Kod aynıysa render da aynıdır. Farkı zaten kod diff'inde görüyoruz.
 
 **Hedef:** Baseline ölçümünden sonra belirlenecek
 
@@ -371,7 +369,7 @@ P99  = Çalıştırmaların %99'u bunun altında
 | M4-LLM | Visual Fidelity (LLM) | Render Figma'ya benziyor mu | Figma screenshot | LLM-as-Judge | Baseline sonrası | %10 |
 | M5 | Compilability | İlk seferde derleniyor mu | Ark projesi | Otomatik (npm start) | Baseline sonrası | %10 |
 | M6 | Code Quality | Kod prensiplerine uyuyor mu | Şirket kod prensipleri | LLM-as-Judge / human review | Baseline sonrası | %10 |
-| M7 | Consistency | Her seferinde benzer sonuç mu | Kendi çıktıları arası | Otomatik (diff + SSIM) | Baseline sonrası | %5 |
+| M7 | Consistency | Her seferinde aynı kodu mu üretiyor | Kendi çıktıları arası | Otomatik (kod diff) | Baseline sonrası | %5 |
 | M8 | Latency | Ne kadar sürüyor | — | Otomatik (süre ölçümü) | Baseline sonrası | %5 |
 
 **Genel Performans Skoru (M0):**
@@ -395,7 +393,7 @@ Hedef: Baseline ölçümünden sonra belirlenecek
 ### Adım 2 — MCP Çalıştırma
 
 - Her golden set frame'i için Figma verisini ve screenshot'ı MCP'ye gönder
-- Tutarlılık testi için her frame'i **5 kez** çalıştır
+- Tutarlılık testi için her frame'i **3 kez** çalıştır
 - Her çalıştırmanın süresini kaydet
 - Üretilen TSX dosyalarını sakla
 
@@ -412,8 +410,7 @@ Hedef: Baseline ölçümünden sonra belirlenecek
 | AST parse → üretilen prop listesi ↔ Figma prop listesi | Figma verisi + üretilen TSX | Prop F1 skoru | M2 |
 | `tsc --noEmit` | Üretilen TSX + Ark type definitions | Type hata listesi | M2 (type check) |
 | `npm start` (düzeltme yapmadan) | Üretilen TSX + Ark projesi | Derlendi / derlenmedi + hata tipi | M5 |
-| Diff: 5 TSX birbirleriyle | 5 üretilen TSX | Değişen satır oranı | M7 (kod) |
-| SSIM: 5 render screenshot birbirleriyle | 5 screenshot | Tutarlılık skoru | M7 (görsel) |
+| Diff: 3 TSX birbirleriyle | 3 üretilen TSX (aynı girdi) | Tutarlı / tutarsız | M7 |
 | Süre istatistikleri | Çalıştırma süreleri | P50, P95, P99 | M8 |
 
 **M3 (Hallucination Rate)** bu adımda ayrıca hesaplanmaz. M1 ve M2'nin precision değerleri hesaplandıktan sonra `M3 = 1 - (M1 Precision + M2 Precision) / 2` formülüyle türetilir.
