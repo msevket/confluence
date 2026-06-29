@@ -121,7 +121,7 @@ Eşleşen her component için, golden set'te belirtilen catalog'a (efa/cfa/wsp) 
 
 **Teknik uygulama:** Babel veya TypeScript AST parser ile üretilen TSX parse edilir, JSX element isimleri otomatik çıkarılır. Figma API veya sadeleştirilmiş Figma verisinden beklenen component listesi elde edilir.
 
-**Hedef:** F1 ≥ 0.92
+**Hedef:** Baseline ölçümünden sonra belirlenecek
 
 ---
 
@@ -162,58 +162,49 @@ Prop F1 = 2 × Precision × Recall / (Precision + Recall)
 
 Figma karşılaştırmasından bağımsız olarak, kullanılan her prop'un Ark'ın TypeScript type definition'ına uygun olup olmadığı da `tsc --noEmit` ile kontrol edilir. Figma ile eşleşse bile Ark'ta geçersiz bir prop = type hatası olarak kaydedilir.
 
-**Hedef:** F1 ≥ 0.88
+**Hedef:** Baseline ölçümünden sonra belirlenecek
 
 ---
 
 ### M3 — Hallucination Rate (Halüsinasyon Oranı)
 
-**Soru:** MCP, Figma tasarımında veya Ark dokümantasyonunda olmayan şeyleri uydurmuş mu?
+**Soru:** MCP, Figma tasarımında olmayan şeyleri ne oranda uydurmuş?
 
-**Yöntem:** Hibrit (otomatik + LLM-as-Judge)
+**Yöntem:** M1 ve M2'den türetilen bileşik metrik (ayrı bir test yapılmaz)
 
-**İki halüsinasyon kategorisi:**
+**M3 neden ayrı bir ölçüm değil?**
 
-#### A) Kod Halüsinasyonu (Otomatik)
+Halüsinasyon = "olmayan bir şeyi üretmek" demektir. Bu tam olarak M1 ve M2'deki **precision** metriğinin yakaladığı şeydir:
 
-| Tip | Ne demek | Nasıl tespit edilir |
+- M1 Precision düşükse → Figma'da olmayan componentlar üretilmiş (component halüsinasyonu)
+- M2 Precision düşükse → Figma'da olmayan prop'lar eklenmiş (prop halüsinasyonu)
+
+Dolayısıyla M3 için ayrı bir test çalıştırmıyoruz. M1 ve M2'nin precision değerlerinden türetiyoruz.
+
+**Önemli ayrım — Precision vs Recall:**
+
+| | Ne ölçer | Örnek |
 |---|---|---|
-| Fabricated Component | Ark'ta var olmayan bir component kullanılmış | Component isimlerini Ark export listesiyle karşılaştır |
-| Fabricated Prop | Component var ama type definition'da tanımsız bir prop kullanılmış | `tsc --noEmit` type-check |
-| Catalog Mismatch | Component Ark'ta var ama yanlış catalog'dan (efa/cfa/wsp) seçilmiş | Catalog eşleşme kontrolü |
-| Phantom Component | Figma'da olmayan ama Ark'ta var olan bir component eklenmiş | M1'deki precision kontrolünden düşenler — Figma'da yok ama üretilmiş |
-| Phantom Prop | Figma'da olmayan bir prop eklenmiş | M2'deki precision kontrolünden düşenler |
+| **Precision hatası** | Üretilen ama olmaması gereken şey → **halüsinasyon** | Figma'da `Modal` yok ama TSX'te `Modal` var |
+| **Recall hatası** | Olması gereken ama üretilmemiş şey → **eksiklik** | Figma'da `Modal` var ama TSX'te yok |
 
-#### B) Görsel Halüsinasyon (LLM-as-Judge)
-
-Figma screenshot ile üretilen render screenshot'ı karşılaştırılarak tespit edilir:
-
-```
-İki görsel veriyorum.
-Birincisi orijinal Figma tasarımı, ikincisi üretilen kodun tarayıcı render'ı.
-
-Şu kriterlere göre karşılaştır:
-1. Figma'da olup çıktıda OLMAYAN elemanlar → listele (eksik eleman)
-2. Figma'da olmayıp çıktıda OLAN elemanlar → listele (fazla eleman)
-3. Var ama görsel olarak yanlış olan elemanlar → listele (renk, boyut, konum hatası)
-
-Her madde için elemanın ne olduğunu ve nerede olduğunu belirt.
-Yalnızca JSON formatında cevap ver.
-```
+Halüsinasyon sadece precision tarafıdır. Bir component'ı atlamak "uydurma" değil, "unutma"dır. Bu yüzden formülde F1 değil, precision kullanılır.
 
 **Formül:**
 
 ```
-Kod Hallucination Rate = (Fabricated + Catalog Mismatch + Phantom öğeler)
-                         / Toplam üretilen öğe sayısı × 100
-
-Görsel Hallucination Rate = (Eksik + Fazla + Görsel yanlış eleman)
-                            / Toplam eleman sayısı × 100
-
-Toplam Hallucination Rate = (Kod × 0.4) + (Görsel × 0.6)
+M3 Hallucination Rate = 1 - (M1 Precision + M2 Precision) / 2
 ```
 
-**Hedef:** Toplam < %25, Kod halüsinasyonu < %10
+**Somut örnek:**
+
+```
+M1 Component Precision = 0.90 → ürettiklerinin %10'u Figma'da yok
+M2 Prop Precision      = 0.85 → yazdığı prop'ların %15'i Figma'da yok
+M3 = 1 - (0.90 + 0.85) / 2 = 1 - 0.875 = 0.125 → %12.5 halüsinasyon
+```
+
+**Hedef:** Baseline ölçümünden sonra belirlenecek
 
 ---
 
@@ -267,7 +258,7 @@ Yalnızca JSON formatında cevap ver.
 Visual Fidelity = (SSIM × 0.4) + (LLM-Judge Skoru / 10 × 0.6)
 ```
 
-**Hedef:** ≥ 0.75
+**Hedef:** Baseline ölçümünden sonra belirlenecek
 
 ---
 
@@ -297,7 +288,7 @@ Compilability Rate = Derlenen dosya sayısı / Toplam dosya sayısı × 100
 
 Bu dağılım MCP'nin sistematik olarak hangi alanda zayıf olduğunu gösterir.
 
-**Hedef:** ≥ %90
+**Hedef:** Baseline ölçümünden sonra belirlenecek
 
 ---
 
@@ -321,7 +312,7 @@ Bu dağılım MCP'nin sistematik olarak hangi alanda zayıf olduğunu gösterir.
 Code Quality = Toplam puan / 10 × 100
 ```
 
-**Hedef:** ≥ %70
+**Hedef:** Baseline ölçümünden sonra belirlenecek
 
 ---
 
@@ -343,7 +334,7 @@ Görsel Tutarlılık  = 5 render arasındaki ortalama SSIM
 Consistency Score  = (Kod Tutarlılığı × 0.5) + (Görsel Tutarlılık × 0.5)
 ```
 
-**Hedef:** ≥ 0.82
+**Hedef:** Baseline ölçümünden sonra belirlenecek
 
 ---
 
@@ -365,7 +356,7 @@ P95  = Çalıştırmaların %95'i bunun altında
 P99  = Çalıştırmaların %99'u bunun altında
 ```
 
-**Hedef:** P95 < 3000 ms
+**Hedef:** Baseline ölçümünden sonra belirlenecek
 
 ---
 
@@ -373,20 +364,20 @@ P99  = Çalıştırmaların %99'u bunun altında
 
 | # | Metrik | Ne ölçer | Ground Truth | Yöntem | Hedef | Ağırlık |
 |---|---|---|---|---|---|---|
-| M1 | Component Detection F1 | Doğru component seçilmiş mi | Figma'daki component listesi | Otomatik (AST parse) | F1 ≥ 0.92 | %15 |
-| M2 | Prop Accuracy F1 | Prop ve variant'lar doğru aktarılmış mı | Figma'daki prop/variant bilgileri | Otomatik (AST + tsc) | F1 ≥ 0.88 | %15 |
-| M3 | Hallucination Rate | Uydurma veya fazla öğe var mı | Ark export listesi + Figma screenshot | Hibrit (AST + LLM-as-Judge) | < %25 | %15 |
-| M4 | Visual Fidelity | Render Figma'ya benziyor mu | Figma screenshot | Hibrit (SSIM + LLM-as-Judge) | ≥ 0.75 | %25 |
-| M5 | Compilability | Kod derleniyor mu | Ark type definitions | Otomatik (tsc --noEmit) | ≥ %90 | %10 |
-| M6 | Code Quality | Kod prensiplerine uyuyor mu | Şirket kod prensipleri | LLM-as-Judge / human review | ≥ %70 | %10 |
-| M7 | Consistency | Her seferinde benzer sonuç mu | Kendi çıktıları arası | Otomatik (diff + SSIM) | ≥ 0.82 | %5 |
-| M8 | Latency | Ne kadar sürüyor | — | Otomatik (süre ölçümü) | P95 < 3s | %5 |
+| M1 | Component Detection F1 | Doğru component seçilmiş mi | Figma'daki component listesi | Otomatik (AST parse) | Baseline sonrası | %15 |
+| M2 | Prop Accuracy F1 | Prop ve variant'lar doğru aktarılmış mı | Figma'daki prop/variant bilgileri | Otomatik (AST + tsc) | Baseline sonrası | %15 |
+| M3 | Hallucination Rate | Uydurma component/prop oranı | M1 ve M2 precision değerleri | Türetilmiş (ayrı test yok) | Baseline sonrası | %15 |
+| M4 | Visual Fidelity | Render Figma'ya benziyor mu | Figma screenshot | Hibrit (SSIM + LLM-as-Judge) | Baseline sonrası | %25 |
+| M5 | Compilability | Kod derleniyor mu | Ark type definitions | Otomatik (tsc --noEmit) | Baseline sonrası | %10 |
+| M6 | Code Quality | Kod prensiplerine uyuyor mu | Şirket kod prensipleri | LLM-as-Judge / human review | Baseline sonrası | %10 |
+| M7 | Consistency | Her seferinde benzer sonuç mu | Kendi çıktıları arası | Otomatik (diff + SSIM) | Baseline sonrası | %5 |
+| M8 | Latency | Ne kadar sürüyor | — | Otomatik (süre ölçümü) | Baseline sonrası | %5 |
 
 **Genel Performans Skoru (M0):**
 
 ```
 M0 = Σ (Metrik skoru × Ağırlık)
-Hedef: M0 ≥ 0.75
+Hedef: Baseline ölçümünden sonra belirlenecek
 ```
 
 ---
@@ -419,18 +410,18 @@ Hedef: M0 ≥ 0.75
 | AST parse → üretilen component listesi ↔ Figma component listesi | Figma verisi + üretilen TSX | F1 skoru + eşleşme raporu | M1 |
 | AST parse → üretilen prop listesi ↔ Figma prop listesi | Figma verisi + üretilen TSX | Prop F1 skoru | M2 |
 | `tsc --noEmit` | Üretilen TSX + Ark type definitions | Derleme sonucu + hata listesi | M2 (type check), M5 |
-| Ark export listesi + catalog karşılaştırma | Üretilen component isimleri | Fabricated/mismatch raporu | M3 (kod) |
 | SSIM: Figma screenshot ↔ render screenshot | İki screenshot | Benzerlik skoru | M4 (pixel) |
 | Diff: 5 TSX birbirleriyle | 5 üretilen TSX | Değişen satır oranı | M7 (kod) |
 | SSIM: 5 render screenshot birbirleriyle | 5 screenshot | Tutarlılık skoru | M7 (görsel) |
 | Süre istatistikleri | Çalıştırma süreleri | P50, P95, P99 | M8 |
+
+**M3 (Hallucination Rate)** bu adımda ayrıca hesaplanmaz. M1 ve M2'nin precision değerleri hesaplandıktan sonra `M3 = 1 - (M1 Precision + M2 Precision) / 2` formülüyle türetilir.
 
 ### Adım 5 — LLM-as-Judge
 
 | Değerlendirme | Girdi | Metrik |
 |---|---|---|
 | Görsel sadakat puanlama | Figma screenshot + render screenshot | M4 (semantik) |
-| Eksik/fazla eleman tespiti | Figma screenshot + render screenshot | M3 (görsel) |
 | Kod prensipleri kontrolü | Üretilen TSX + şirket kod prensipleri | M6 |
 
 ### Adım 6 — Human Review (örneklemin %20-30'u)
@@ -454,7 +445,7 @@ LLM-as-Judge'ın güvenilirliğini kalibre etmek için golden set'in %20-30'u in
 
 ## LLM-as-Judge Güvenilirlik Kontrolleri
 
-LLM-as-Judge kullanılan metriklerde (M3, M4, M6) sonuçların güvenilir olması için:
+LLM-as-Judge kullanılan metriklerde (M4, M6) sonuçların güvenilir olması için:
 
 | Kontrol | Nasıl yapılır | Kabul kriteri |
 |---|---|---|
@@ -483,14 +474,17 @@ Herhangi bir metrikte önceki çalıştırmaya göre **> %5 düşüş** tespit e
 **Referans TSX olmadan F1 score'u nasıl hesaplıyoruz?**
 Figma tasarımının kendisi ground truth görevi görüyor. Figma'daki component isimleri ve prop/variant bilgileri "beklenen set"i oluşturuyor, üretilen TSX'teki component ve prop'lar "üretilen set"i oluşturuyor. Bu iki set karşılaştırılarak precision, recall ve F1 hesaplanıyor.
 
+**M3 (Hallucination Rate) neden ayrı bir test değil?**
+Halüsinasyon "olmayan bir şeyi üretmek" demektir. Bu zaten M1 ve M2'deki precision metriğinin yakaladığı şeydir: Figma'da olmayan bir component veya prop üretilmişse precision düşer. M3'ü ayrı ölçmek aynı şeyi iki kez saymak olurdu. Bunun yerine M1 ve M2'nin precision değerlerinden türetiyoruz. Böylece raporda "Hallucination Rate" satırı var ama arkasında mükerrer bir test yok.
+
 **Bu metrikler neden standart bir LLM eval framework'ünden alınmamış?**
 Standart framework'ler soru-cevap formatındaki LLM çıktıları için tasarlanmış. Bizim çıktımız kod olduğu için domain'e özel metrikler gerekiyor. Ancak metriklerin temeli global ve kanıtlanmış yöntemler: F1 score, SSIM, precision/recall. Bunları kendi dönüşüm pipeline'ımıza uyarladık.
 
 **Catalog (efa/cfa/wsp) kontrolü neden önemli?**
 Bir component teknik olarak Ark'ta var olabilir ama sayfanın ait olduğu catalog'a ait olmayabilir. Yanlış catalog'dan component kullanmak, uygulamada tutarsız UI veya import hataları yaratır.
 
-**Hedef değerler nasıl belirlendi?**
-İlk golden set çalıştırmasında baseline ölçülecek. Hedefler "ulaşılabilir ama zorlayıcı" olacak şekilde kalibre edilecek. Pipeline olgunlaştıkça hedefler yukarı çekilebilir.
+**Hedef değerler nasıl belirlenecek?**
+Hedefler önceden sabitlenmedi. İlk golden set çalıştırmasında her metriğin baseline değeri ölçülecek, bu değer referans alınarak "ulaşılabilir ama zorlayıcı" hedefler belirlenecek. Pipeline olgunlaştıkça hedefler yukarı çekilebilir.
 
 **Visual Fidelity neden en yüksek ağırlıklı?**
 Figma→kod dönüşümünün temel vaadi "Figma'daki tasarımı koda çevirmek." Bir geliştirici render'a baktığında Figma'yı görmüyorsa, component ve prop'lar teknik olarak doğru olsa bile dönüşüm başarısız demektir.
